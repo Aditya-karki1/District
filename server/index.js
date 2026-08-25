@@ -44,7 +44,7 @@ app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date() }))
 if (isProd) {
   const distPath = path.join(__dirname, '../district/dist');
   app.use(express.static(distPath));
-  app.get('*', (req, res) => {
+  app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
