@@ -24,11 +24,45 @@ Customers get a conversational shopping assistant, AI-powered upsells, a loyalty
 
 | Agent | Description | Safety Gate |
 |---|---|---|
-| 🤖 **AI Shopping Assistant** | Conversational in-app checkout. Natural language cart management, voice input, recipe-based grocery ordering, and Razorpay payment — all in one chat panel. | Auth-gated payment |
+| 🤖 **AI Shopping Assistant** | Conversational in-app checkout. Natural language cart management, voice input, recipe-based grocery ordering, and Razorpay payment — all in one draggable chat panel. | Auth-gated payment |
 | ⚡ **AI Upsell Agent** | Powered by Gemini 3.6 Flash. Suggests 2 complementary products with style reasoning after every add-to-cart. Accepted upsells award 20 Green Credits. | Auth required |
 | 📊 **Campaign Orchestrator** | Merchant describes a goal in plain English. Agent generates a campaign plan, shows a preview of affected products and margin impact, then applies discounts on activation. | Merchant-gated, preview before activate |
 | 🛒 **AI Buyer Agent** | Autonomously discovers products, creates a Razorpay order, and simulates a cryptographically-verified payment. Demonstrates full agent-to-merchant commerce. | Configurable spending limit, HMAC-verified |
-| ↩ **Return Processor + ML Scanner** | Camera-based product condition scan with a 4-phase AI animation (camera → preview → scanning → result). An on-device logistic regression model grades item condition (A/B/C) and scores return risk. Orders under ₹3,000 are auto-approved instantly; higher-value returns are ML-graded and queue for merchant review. Auto-approved items are assigned to the nearest District Hub. | ML risk score · threshold-gated · hub assignment |
+| ↩ **Return Processor + ML Scanner** | Camera-based product condition scan with a 4-phase AI animation (camera → preview → scanning → result). An on-device logistic regression model grades item condition (A/B/C) and scores return risk. Orders under ₹3,000 are auto-approved instantly; higher-value returns are ML-graded and queued for merchant review. Auto-approved items are assigned to the nearest District Hub. | ML risk score · threshold-gated · hub assignment |
+
+---
+
+## District Hub Loop
+
+The hub system closes the circular commerce loop: returned items become same-day inventory, available to new buyers in the same city.
+
+```
+Customer Return
+      │
+      ▼
+PATCH /api/orders/:id/return
+      │
+      ├─ Order < ₹3,000 → AI Auto-Approved
+      │        │
+      │        └─ Item → HubInventory (hubPrice = originalPrice × 0.95)
+      │                       │
+      │                       └─ Appears in HubStrip on homepage
+      │                              │
+      │                              └─ Next buyer adds to cart
+      │                                      │
+      │                                      └─ PATCH /api/hubs/inventory/:id/sell
+      │
+      └─ Order ≥ ₹3,000 → Queued for merchant review
+               │
+               └─ AI scan image + condition grade stored with order
+```
+
+**Key details:**
+- Returned items enter `HubInventory` at a **5% discount** from the original price
+- Hub is selected deterministically from the order ID so re-runs are idempotent
+- The `HubStrip` on the storefront homepage shows all available hub items with their condition, hub name, and area
+- After a hub item is purchased, `PATCH /api/hubs/inventory/:id/sell` removes it from the available pool
+- Merchant dashboard → Hubs tab shows per-hub inventory, sold count, and revenue
 
 ---
 
@@ -102,11 +136,43 @@ python generate_and_train.py
 
 ---
 
-### Green Credits Engine
+## Green Credits Engine
 
-- **Earn:** 5 GC per ₹100 spent · 50 GC first-purchase bonus · 20 GC per AI upsell accepted
-- **Redeem:** Unlock coupons (SAVE5 → PREMIUM15) by spending GC
-- **Bound:** Max redemption capped at 20% of order value — enforced server-side
+Customers earn Green Credits (GC) on every interaction and spend them to unlock discount coupons.
+
+**Earning:**
+| Action | Reward |
+|---|---|
+| Purchase | 5 GC per ₹100 spent |
+| First purchase ever | +50 GC bonus |
+| AI upsell accepted | +20 GC |
+
+**Redeeming — default coupon tiers:**
+| Code | Type | Discount | Min Order | GC Cost |
+|---|---|---|---|---|
+| `SAVE5` | Percentage | 5% off | ₹500 | 50 GC |
+| `FLAT150` | Flat | ₹150 off | ₹999 | 100 GC |
+| `SAVE10` | Percentage | 10% off | ₹1,500 | 150 GC |
+| `FLAT300` | Flat | ₹300 off | ₹2,000 | 250 GC |
+| `PREMIUM15` | Percentage | 15% off | ₹3,000 | 400 GC |
+
+**Bound:** Maximum GC redemption is capped at 20% of the order value — enforced server-side. Attempts to exceed the cap are logged as `BOUND_ENFORCED` in the audit trail.
+
+Coupons are **auto-seeded** on first server start if the collection is empty.
+
+---
+
+## Partner Demo Pages
+
+Three fully designed demo pages accessible from the main navigation showcase District's multi-vertical vision:
+
+| Page | Route | What it shows |
+|---|---|---|
+| 🍕 **Zomato** | `/zomato` | Food ordering UI — restaurants, cuisines, an OpenStreetMap embed for nearby restaurants, and an AI-powered food search that forwards queries to the AI Assistant |
+| 🎬 **PVR INOX** | `/pvrinox` | Movie booking UI — now showing films, coming soon, cinema listings, showtimes picker, and offers |
+| 💎 **BlueStone** | `/bluestone` | Jewellery store — category grid, curated collections, featured pieces with add-to-cart wired to the main District cart |
+
+All three pages are SPA routes managed in `App.jsx` — no separate URL; the nav re-renders the content area.
 
 ---
 
@@ -122,6 +188,8 @@ The buildathon requirement: every agent action must be **explainable, bounded, a
 | 🚫 Fraud detection | Coupon reuse attempts logged as `FRAUD_ATTEMPT` before rejection |
 | ⚖️ Credit cap | Over-redemption requests logged as `BOUND_ENFORCED` before being capped |
 | ↩ Return threshold | Only orders < ₹3,000 auto-approved; larger returns require explicit merchant approval |
+| 🪟 Return window | 7-day return window enforced server-side — returns after 7 days are rejected at the API level |
+| 📸 Scan evidence | AI scan image + condition grade stored on the order record for merchant review audit |
 
 ---
 
@@ -130,7 +198,9 @@ The buildathon requirement: every agent action must be **explainable, bounded, a
 **Frontend**
 - React 19 SPA with Vite 8
 - CSS custom properties (light + dark theme, matches user OS)
-- Web Speech API for voice input in the AI assistant
+- Web Speech API — voice input in the AI Assistant (en-IN locale)
+- Leaflet.js (npm) + OpenStreetMap — interactive hub maps in merchant dashboard and return flow
+- OpenStreetMap embed iframes — partner page maps (no API key required)
 
 **Backend**
 - Express 5 REST API
@@ -140,7 +210,8 @@ The buildathon requirement: every agent action must be **explainable, bounded, a
 
 **AI & Payments**
 - Razorpay test-mode — full checkout modal, HMAC-SHA256 verification, webhooks
-- Google Gemini 3.6 Flash — upsell suggestions
+- Google Gemini 3.6 Flash (`@google/genai`) — upsell suggestions
+- Logistic Regression (scikit-learn → JSON export) — ML return risk scoring
 
 ---
 
@@ -185,12 +256,12 @@ cd district && npm run dev
 
 Vite proxies `/api/*` to `http://localhost:5001` — no CORS configuration needed locally.
 
-### 4. Seed the database (optional)
+### 4. Seed the database
 
 ```bash
 cd server
-node seed.js      # seeds the product catalog
-node seedHubs.js  # seeds 5 District Hubs across cities
+node seed.js      # seeds the product catalog (~40 products across brands)
+node seedHubs.js  # seeds 5 District Hubs across Bangalore, Mumbai, Delhi, Chennai, Hyderabad
 ```
 
 > **Coupons are auto-seeded.** The 5 default coupons (SAVE5, FLAT150, SAVE10, FLAT300, PREMIUM15) are inserted automatically on first server start if the collection is empty.
@@ -201,7 +272,7 @@ node seedHubs.js  # seeds 5 District Hubs across cities
 
 | Variable | Required | Description |
 |---|---|---|
-| `PORT` | optional | Server port. Defaults to 5000. |
+| `PORT` | optional | Server port. Defaults to 5001. |
 | `MONGO_URI` | **required** | MongoDB Atlas connection string. |
 | `JWT_SECRET` | **required** | Secret for signing JWTs. Use a long random string. |
 | `RAZORPAY_KEY_ID` | **required** | Test-mode key ID starting with `rzp_test_`. |
@@ -214,51 +285,75 @@ node seedHubs.js  # seeds 5 District Hubs across cities
 ## Project Structure
 
 ```
-district/                        # Monorepo root
-├── district/                    # React frontend (Vite)
+district/                            # Monorepo root
+├── render.yaml                      # Render deployment config
+├── district/                        # React frontend (Vite)
 │   └── src/
-│       ├── components/
-│       │   ├── AIAssistant.jsx      # Conversational agent UI + Razorpay
-│       │   ├── CartPanel.jsx        # Cart, checkout, coupon input
-│       │   ├── AccountPanel.jsx     # Orders, returns, return scanner
-│       │   ├── ReturnScanModal.jsx  # ML return scanner — camera → scan → grade → result
-│       │   ├── MerchantDashboard.jsx  # Full merchant portal (9 tabs)
-│       │   ├── HubStrip.jsx         # Instant delivery from local hubs
-│       │   ├── ZomatoPage.jsx       # Food & grocery demo page
-│       │   ├── PVRInoxPage.jsx      # Movie booking demo page
-│       │   └── BluestonePage.jsx    # Jewellery store demo page
+│       ├── App.jsx                  # Root: SPA routing, page switching, AI/auth state
+│       ├── data/
+│       │   └── products.js          # Product catalog, hero slides, categories, brands
 │       ├── context/
-│       │   ├── AppContext.jsx       # Cart, toast, popup state
-│       │   └── AuthContext.jsx      # JWT auth, session restore
-│       └── utils/
-│           └── aiAgent.js          # NLP intent parser + product resolver
+│       │   ├── AppContext.jsx       # Cart, toast, celebration popup state
+│       │   └── AuthContext.jsx      # JWT auth, session restore, token helpers
+│       ├── utils/
+│       │   └── aiAgent.js          # NLP intent parser + live catalog resolver
+│       └── components/
+│           ├── AIAssistant.jsx      # Conversational agent UI, voice input, Razorpay
+│           ├── CartPanel.jsx        # Cart drawer, checkout, coupon input, GC balance
+│           ├── AccountPanel.jsx     # Orders history, return button, return timeline
+│           ├── ReturnScanModal.jsx  # 4-phase ML return scanner — camera → scan → grade → result
+│           ├── MerchantDashboard.jsx  # Full merchant portal (9 tabs, Leaflet hub map)
+│           ├── MerchantLoginPage.jsx  # Standalone merchant sign-in page
+│           ├── AuthModal.jsx        # Customer + merchant auth modal (login / register)
+│           ├── Navbar.jsx           # Desktop nav, coupon panel, GC balance, user dropdown
+│           ├── MobileNav.jsx        # Mobile slide-in menu
+│           ├── AnnouncementBar.jsx  # Scrolling promo ticker
+│           ├── HeroCarousel.jsx     # Auto-advancing homepage hero slider
+│           ├── CategoryGrid.jsx     # Shop by category grid
+│           ├── ProductGrid.jsx      # Product grid with skeleton loaders
+│           ├── ProductCard.jsx      # Individual product card (wishlist, add to cart)
+│           ├── BrandMarquee.jsx     # Infinite-scroll brand logo ticker
+│           ├── HubStrip.jsx         # Instant delivery items from local return hubs
+│           ├── PromoStrip.jsx       # Sale promotion banner
+│           ├── Newsletter.jsx       # Email subscribe section
+│           ├── Footer.jsx           # Site footer with links and payment methods
+│           ├── Toast.jsx            # Non-blocking notification toast
+│           ├── CelebrationPopup.jsx # Confetti popup for GC/coupon events
+│           ├── ZomatoPage.jsx       # Food & grocery demo page (OSM map embed)
+│           ├── PVRInoxPage.jsx      # Movie booking demo page
+│           └── BluestonePage.jsx    # Jewellery store demo (wired to District cart)
 │
-└── server/                      # Express 5 API
+└── server/                          # Express 5 API
+    ├── index.js                     # App entry, middleware, route mounting, static serve
+    ├── seed.js                      # Seeds the product catalog
+    ├── seedHubs.js                  # Seeds 5 District Hubs with lat/lng coordinates
     ├── ml/
-    │   ├── generate_and_train.py # Synthetic data generation + logistic regression training
-    │   ├── model.json            # Frozen model weights (scaler, coef, intercept, metrics)
-    │   └── scorer.js             # Pure-JS inference — no Python needed at runtime
+    │   ├── generate_and_train.py    # Synthetic data + logistic regression training
+    │   ├── model.json               # Frozen model weights (scaler, coef, intercept, metrics)
+    │   └── scorer.js                # Pure-JS inference — no Python at runtime
+    ├── middleware/
+    │   └── auth.js                  # JWT verify middleware (requireAuth)
     ├── models/
-    │   ├── User.js               # bcrypt passwords, GC balance, coupons
-    │   ├── Order.js              # Orders, returns, agent purchases
-    │   ├── Product.js            # Merchant catalog
-    │   ├── Campaign.js           # AI campaign plans
-    │   ├── CreditLedger.js       # GC earn/burn history
-    │   ├── Coupon.js             # Coupon definitions
-    │   ├── LocalHub.js           # Hub locations
-    │   ├── HubInventory.js       # Items at hubs for instant delivery
-    │   ├── UpsellAcceptance.js   # AI upsell tracking
-    │   └── AuditEvent.js         # Security & bound enforcement log
+    │   ├── User.js                  # bcrypt passwords, GC balance, unlocked coupons
+    │   ├── Order.js                 # Orders, return status, AI scan evidence
+    │   ├── Product.js               # Merchant product catalog
+    │   ├── Campaign.js              # AI campaign plans (goal, products, status)
+    │   ├── CreditLedger.js          # GC earn/burn transaction history
+    │   ├── Coupon.js                # Coupon definitions (type, value, GC cost, min order)
+    │   ├── LocalHub.js              # Hub locations with lat/lng coordinates
+    │   ├── HubInventory.js          # Returned items at hubs available for instant delivery
+    │   ├── UpsellAcceptance.js      # AI upsell tracking (product, reason, GC awarded)
+    │   └── AuditEvent.js            # Security & bound enforcement log
     └── routes/
-        ├── agent.js              # AI catalog, upsell, campaigns, buyer, audit
-        ├── payment.js            # Razorpay create-order + HMAC verify
-        ├── auth.js               # Register, login, /me
-        ├── orders.js             # CRUD + return requests
-        ├── merchant.js           # Merchant-gated routes
-        ├── credits.js            # GC balance, history, preview
-        ├── coupons.js            # Unlock, apply, consume
-        ├── hubs.js               # Hub inventory + sell endpoint
-        └── webhook.js            # Razorpay webhook handler
+        ├── agent.js                 # AI catalog, upsell, campaigns, buyer, audit trail
+        ├── payment.js               # Razorpay create-order + HMAC verify + GC award
+        ├── auth.js                  # Register, login, /me session restore
+        ├── orders.js                # Order history + return request handler
+        ├── merchant.js              # Merchant login, order review, product CRUD
+        ├── credits.js               # GC balance, history, preview endpoint
+        ├── coupons.js               # Unlock, apply, consume; merchant coupon CRUD
+        ├── hubs.js                  # Hub inventory, available items, sell endpoint
+        └── webhook.js               # Razorpay webhook (raw body, HMAC-verified)
 ```
 
 ---
@@ -270,7 +365,7 @@ district/                        # Monorepo root
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/register` | Create customer account |
-| `POST` | `/login` | Get JWT token |
+| `POST` | `/login` | Get 7-day JWT token |
 | `GET` | `/me` | Restore session · Auth required |
 
 ### Payments — `/api/payment` · Auth required
@@ -278,9 +373,25 @@ district/                        # Monorepo root
 | Method | Endpoint | Description |
 |---|---|---|
 | `POST` | `/create-order` | Create Razorpay order, apply GC discount |
-| `POST` | `/verify` | HMAC-SHA256 verify + create order + award GC |
+| `POST` | `/verify` | HMAC-SHA256 verify + create order + award GC + consume coupon |
 | `POST` | `/log-failure` | Record payment failure for audit trail |
 | `POST` | `/webhook` | Razorpay webhook (raw body, HMAC-verified) |
+
+### Orders — `/api/orders` · Auth required
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Customer's full order history |
+| `PATCH` | `/:id/return` | Submit return request — auto-approves orders < ₹3,000, queues others for merchant review; assigns returned items to nearest District Hub |
+
+### Hubs — `/api/hubs`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/` | Public | All active District Hubs with coordinates |
+| `GET` | `/available` | Public | Hub inventory items available for instant delivery |
+| `PATCH` | `/inventory/:id/sell` | Customer | Mark hub item sold after payment |
+| `GET` | `/dashboard` | Merchant | Per-hub stats (inventory count, sold count, revenue) |
 
 ### AI Agent — `/api/agent`
 
@@ -290,10 +401,10 @@ district/                        # Monorepo root
 | `POST` | `/upsell` | Customer | Gemini upsell suggestions |
 | `POST` | `/upsell/accept` | Customer | Record acceptance + award 20 GC |
 | `POST` | `/campaign` | Merchant | Generate campaign plan from goal |
-| `GET` | `/campaigns/:id/preview` | Merchant | Preview impact before activation |
-| `PATCH` | `/campaigns/:id/activate` | Merchant | Apply discounts to products |
+| `GET` | `/campaigns/:id/preview` | Merchant | Preview margin impact before activation |
+| `PATCH` | `/campaigns/:id/activate` | Merchant | Apply discounts to affected products |
 | `PATCH` | `/campaigns/:id/deactivate` | Merchant | Restore original prices |
-| `POST` | `/buy` | Merchant | Autonomous AI purchase (bounded) |
+| `POST` | `/buy` | Merchant | Autonomous AI purchase (bounded by spending limit) |
 | `GET` | `/audit` | Merchant | Full chronological audit trail |
 
 ### Green Credits — `/api/credits` · Auth required
@@ -308,13 +419,25 @@ district/                        # Monorepo root
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `GET` | `/` | Customer | Active coupons with unlock status |
+| `GET` | `/` | Customer | Active coupons with unlock status and affordability |
 | `POST` | `/unlock` | Customer | Spend GC to unlock a coupon |
-| `POST` | `/apply` | Customer | Validate coupon at checkout |
+| `POST` | `/apply` | Customer | Validate coupon code at checkout |
 | `GET` | `/merchant` | Merchant | All coupons with usage stats |
 | `POST` | `/merchant` | Merchant | Create new coupon |
 | `PATCH` | `/merchant/:code` | Merchant | Update coupon |
 | `DELETE` | `/merchant/:code` | Merchant | Delete coupon |
+
+### Merchant — `/api/merchant`
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/login` | Get 12-hour merchant JWT token |
+| `GET` | `/orders` | All customer orders with return status |
+| `PATCH` | `/orders/:id/return` | Approve or reject a queued return request |
+| `GET` | `/products` | Merchant's product catalog |
+| `POST` | `/products` | Create new product |
+| `PUT` | `/products/:id` | Update product |
+| `DELETE` | `/products/:id` | Delete product |
 
 ---
 
@@ -327,7 +450,7 @@ Email:    merchant@district.in
 Password: District@2025
 ```
 
-Click **Sign In → Merchant** in the auth modal.
+Click **Sign In → Merchant** in the auth modal, or use the **Merchant Portal** link in the footer.
 
 ### Customer Account
 
@@ -362,7 +485,7 @@ Set all environment variables in your Render dashboard under **Environment → E
 
 ---
 
-## Payment & Agent Flow
+## Payment & Agent Flows
 
 **Customer checkout:**
 ```
@@ -371,11 +494,34 @@ Cart → POST /api/payment/create-order → Razorpay Modal
      → Order created → GC awarded → Coupon consumed → Audit written
 ```
 
+**Return + hub assignment:**
+```
+Return button → ReturnScanModal (camera → scan → grade)
+             → PATCH /api/orders/:id/return
+             │
+             ├─ total < ₹3,000 → AI Auto-Approved
+             │       → HubInventory created (hubPrice = price × 0.95)
+             │       → RefundCountdown starts (2 min)
+             │       → NearestHubMap shown (OpenStreetMap + Haversine)
+             │
+             └─ total ≥ ₹3,000 → returnStatus = 'Requested'
+                     → AI scan image + grade stored on order
+                     → Merchant reviews in dashboard
+```
+
 **AI Buyer agent:**
 ```
 POST /api/agent/buy → Product discovery → Spend limit check
                     → Razorpay order created → Simulated HMAC payment
                     → District order created → 7-step audit trail saved
+```
+
+**Hub instant delivery:**
+```
+HubStrip (homepage) → Customer adds hub item to cart
+                    → Razorpay checkout (same flow as above)
+                    → POST /api/payment/verify
+                    → PATCH /api/hubs/inventory/:id/sell (item marked sold)
 ```
 
 ---
