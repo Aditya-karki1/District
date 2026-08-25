@@ -32,6 +32,192 @@ Customers get a conversational shopping assistant, AI-powered upsells, a loyalty
 
 ---
 
+## 🤖 AI Shopping Assistant
+
+A fully conversational shopping agent that lives in a draggable chat panel. It understands natural language, speaks with voice, resolves pronouns from earlier messages, and can complete a full Razorpay checkout — all without leaving the chat.
+
+### Capabilities
+
+| Intent | Example phrase | What happens |
+|---|---|---|
+| Add to cart | *"Add Nike Dunks to cart"* | Fuzzy-matches product, adds it, shows confirmation card, triggers upsell |
+| Search & browse | *"Show me hoodies under ₹3000"* | Filters catalog by category + budget, returns up to 4 results |
+| Pronoun resolution | *"Add all of them"* | Adds the last set of shown products (tracked in `lastProductsRef`) |
+| Recipe ordering | *"I feel like eating Dal Makhani"* | Adds all ingredients to cart item-by-item (3 built-in recipes) |
+| Remove from cart | *"Remove the hoodie"* | Fuzzy-matches cart item by name/brand, removes it |
+| Clear cart | *"Empty my cart"* | Wipes the cart |
+| View cart | *"What's in my cart?"* | Opens the cart drawer |
+| Place order | *"Checkout"* / *"Place my order"* | Loads Razorpay SDK, opens checkout modal, HMAC-verifies on success |
+| Order history | *"My orders"* | Navigates to account panel → Orders tab |
+| Greet / help | *"Hi"* / *"What can you do?"* | Returns capability summary |
+
+### How it works
+
+```
+User message
+      │
+      ▼
+parseMessage()          — intent detection via regex patterns (aiAgent.js)
+      │
+      ▼
+resolveAction()         — maps intent + query to a typed action object
+      │
+      ├─ ADD_TO_CART     → addToCart() + fetchUpsell() after 1.2s delay
+      ├─ ADD_RECIPE       → addToCart() for each ingredient
+      ├─ SHOW_PRODUCTS    → filterProducts() returns up to 4 matches
+      ├─ PLACE_ORDER      → loadRazorpayScript() → modal → /api/payment/verify
+      └─ SHOW_ORDERS      → onAccountOpen() callback
+```
+
+### Key implementation details
+
+- **Live catalog:** `initLiveCatalog()` fetches merchant-added DB products on first open and merges them into the in-memory product list — the agent always has an up-to-date view of what's for sale
+- **Voice input:** Web Speech API (`en-IN` locale), interim results shown as you speak, final transcript auto-sent
+- **Draggable panel:** `onMouseDown` drag handler tracks offset so the panel can be repositioned anywhere on screen; position resets on close
+- **Zomato integration:** The Zomato demo page search bar injects an `initialQuery` prop that auto-sends to the assistant on open
+
+---
+
+## ⚡ AI Upsell Agent
+
+After every add-to-cart, Gemini 3.6 Flash analyzes the added item and the current cart, then suggests 2 complementary products with specific style reasoning. Accepting a suggestion awards the customer 20 Green Credits.
+
+### Flow
+
+```
+addToCart(product)
+      │
+      └─ setTimeout(fetchUpsell, 1200ms)   ← delayed so cart confirmation shows first
+              │
+              ▼
+        POST /api/agent/upsell
+              │
+              ├─ Builds prompt: item, cart contents, 30-product catalog snapshot
+              ├─ Calls Gemini 3.6 Flash → JSON with 2 suggestions + reasons
+              ├─ Fuzzy-matches suggestion names back to catalog objects
+              └─ Returns { suggestions: [{ product, reason }, ...] }
+              │
+              ▼
+        Upsell message rendered in chat with "+ Add" buttons
+              │
+              └─ Customer clicks "+ Add"
+                      │
+                      ├─ addToCart(upsellProduct)
+                      └─ POST /api/agent/upsell/accept → +20 GC → UpsellAcceptance record
+```
+
+### Gemini prompt design
+
+The prompt passes the trigger product, full cart contents, and a 30-item catalog sample. Gemini is instructed to suggest **exactly 2 items** from the provided catalog list and explain why each one complements the trigger item in terms of **fashion/style synergy** (not just category matching). The response is parsed as strict JSON; if parsing fails, suggestions are silently dropped (best-effort, never blocks the cart flow).
+
+### Data tracked
+
+Every accepted upsell is recorded in `UpsellAcceptance` with: `user`, `productId`, `productName`, `productBrand`, `price`, `triggerProduct`. This feeds the merchant dashboard's upsell analytics tab.
+
+---
+
+## 📊 Campaign Orchestrator
+
+Merchants type a goal in plain English. The orchestrator generates a targeted campaign plan, shows a live preview of affected products and estimated margin impact, then applies real price changes to the catalog on activation.
+
+### Flow
+
+```
+Merchant types goal (e.g. "boost sneaker sales this weekend")
+      │
+      ▼
+POST /api/agent/campaign
+      │
+      ├─ generateCampaignPlan(goal, categories)
+      │       — rule-based keyword matcher across 6 campaign archetypes:
+      │         Sneakers · Ethnic Wear · Streetwear · New Arrivals · Clearance · VIP
+      │       — returns: { name, targetCategory, targetBadge, discountPercent,
+      │                    predictedRevenueLift, reasoning }
+      │
+      ├─ Campaign saved as Draft in MongoDB
+      │
+      ▼
+GET /api/agent/campaigns/:id/preview
+      │
+      ├─ Queries products matching targetCategory + targetBadge
+      ├─ Returns: affectedCount, estimatedRevLost, sample products
+      │
+      ▼
+Merchant approves → PATCH /api/agent/campaigns/:id/activate
+      │
+      ├─ Sets price = originalPrice × (1 − discountPercent/100) on all matching products
+      ├─ Stores originalPrice so it can be restored later
+      ├─ Campaign status → Active, affectedProductIds saved
+      │
+      ▼
+Merchant ends → PATCH /api/agent/campaigns/:id/deactivate
+      └─ Restores originalPrice on all affected products → Campaign status → Ended
+```
+
+### Campaign archetypes (rule-based)
+
+| Keywords in goal | Campaign name | Discount | Badge |
+|---|---|---|---|
+| sneaker, shoe, footwear | Weekend Sole Rush / Kicks Takeover | 15–18% | SALE / HOT |
+| festive, ethnic, kurta | Festive Style Drop | 20% | LIMITED |
+| hoodie, jacket, winter | Cold-Weather Flash | 20% | SALE |
+| new, launch, drop | Fresh Drop Spotlight | 10% | NEW |
+| clearance, stock | Stock Purge Sprint | 35% | SALE |
+| premium, vip, luxury | VIP Early Access | 12% | LIMITED |
+| *(anything else)* | Revenue Accelerator | 15% | HOT |
+
+---
+
+## 🛒 AI Buyer Agent
+
+An autonomous purchasing agent that discovers products, creates a real Razorpay test-mode order, simulates a cryptographically-verified payment, and writes a 7-step audit trail — all without a human at checkout.
+
+### Flow
+
+```
+POST /api/agent/buy  { agentId, preferences, spendingLimit }
+      │
+      ├─ Step 1: AGENT_STARTED — log agent identity + timestamp
+      │
+      ├─ Step 2: PRODUCTS_SELECTED
+      │       — queries DB: active=true, stock>0, optional category/badge filter
+      │       — filters out products where price > spendingLimit
+      │       — picks highest-priced product (max merchant revenue)
+      │
+      ├─ Step 3: BOUND_CHECKED
+      │       — if totalAmount > spendingLimit → AuditEvent(BOUND_ENFORCED) + 400 error
+      │       — otherwise → proceeds
+      │
+      ├─ Step 4: RAZORPAY_ORDER_CREATED
+      │       — rzp.orders.create() → real Razorpay test-mode order
+      │       — amount in paise, receipt prefixed with "ai_"
+      │
+      ├─ Step 5: PAYMENT_SIMULATED
+      │       — generates simulatedPaymentId = "pay_TestAI_{timestamp}"
+      │       — computes HMAC-SHA256(orderId|paymentId, RAZORPAY_KEY_SECRET)
+      │       — signature is cryptographically identical to a real payment
+      │
+      ├─ Step 6: ORDER_CREATED
+      │       — District Order created: agentPurchase=true, agentId stored
+      │       — orderRef prefixed with "AI-" to distinguish from human orders
+      │
+      └─ Step 7: PURCHASE_COMPLETE
+              — all 7 steps bulk-written to AuditEvent collection
+              — response includes order, rzpOrder, audit trail
+```
+
+### Safety guarantees
+
+| Gate | Detail |
+|---|---|
+| **Spending limit** | Checked before Razorpay order is created — `totalAmount > spendingLimit` is rejected with `BOUND_ENFORCED` audit event |
+| **Test-mode only** | Uses `rzp_test_` key — no real card is ever charged |
+| **HMAC integrity** | Simulated signature uses the same algorithm as real payments — can be verified independently |
+| **Full audit trail** | Every step written to `AuditEvent` — visible in the merchant dashboard → Audit tab |
+| **Agent labelled orders** | `agentPurchase: true` and `agentId` stored on the order — distinguishable from human orders in all queries |
+
+---
+
 ## District Hub Loop
 
 The hub system closes the circular commerce loop: returned items become same-day inventory, available to new buyers in the same city.
