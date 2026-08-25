@@ -153,60 +153,8 @@ router.get('/catalog', async (req, res) => {
   }
 });
 
-// Rule-based upsell fallback — used when GEMINI_API_KEY is not set or Gemini call fails
-function ruleBasedUpsell(item, cartItems, catalog) {
-  const cartIds  = new Set([item.id, item._id, ...cartItems.map(i => String(i.id || i._id))].filter(Boolean));
-  const cartNames = new Set(cartItems.map(i => i.name.toLowerCase()));
-  const trigger  = item.name.toLowerCase();
-
-  // Complementary category pairs
-  const PAIRS = {
-    sneaker: ['hoodie', 'jogger', 'cap', 'jacket', 'tee', 'sock'],
-    hoodie:  ['jogger', 'sneaker', 'cap', 'backpack'],
-    jacket:  ['tee', 'jean', 'sneaker', 'backpack'],
-    tee:     ['jean', 'sneaker', 'cap', 'jacket'],
-    jean:    ['tee', 'sneaker', 'jacket', 'hoodie'],
-    cap:     ['tee', 'sneaker', 'hoodie'],
-    backpack:['sneaker', 'hoodie', 'jacket'],
-  };
-
-  const keyword = Object.keys(PAIRS).find(k => trigger.includes(k)) || 'sneaker';
-  const wants   = PAIRS[keyword];
-
-  // Score candidates: prefer complementary keywords, exclude cart items
-  const scored = catalog
-    .filter(p => !cartIds.has(String(p.id || p._id)) && !cartNames.has(p.name.toLowerCase()))
-    .map(p => {
-      const n = p.name.toLowerCase();
-      const score = wants.findIndex(w => n.includes(w));
-      return { p, score: score === -1 ? 99 : score };
-    })
-    .sort((a, b) => a.score - b.score);
-
-  const REASONS = {
-    sneaker:  'completes the streetwear look with your new kicks',
-    hoodie:   'pairs perfectly for a layered street style fit',
-    jacket:   'elevates the outfit for any weather',
-    tee:      'keeps the look clean and versatile',
-    jean:     'the go-to base for your new piece',
-    cap:      'the finishing touch for a complete fit',
-    backpack: 'carries the whole look with function',
-  };
-
-  return scored.slice(0, 2).map(({ p }) => {
-    const matchedKw = Object.keys(REASONS).find(k => p.name.toLowerCase().includes(k)) || keyword;
-    return {
-      product: p,
-      name:    p.name,
-      reason:  `${p.name} ${REASONS[matchedKw] || 'pairs great with your selection'}`,
-    };
-  });
-}
-
 // ── POST /api/agent/upsell ────────────────────────────────────────────────────
-// Suggests 2 complementary products after add-to-cart.
-// Uses Gemini 3.6 Flash when GEMINI_API_KEY is set; falls back to rule-based
-// logic when the key is absent or the API call fails — upsells always work.
+// Given an item just added to cart, Claude suggests 1-2 complementary products
 router.post('/upsell', requireAuth, async (req, res) => {
   try {
     const { item, cartItems = [], allProducts = [] } = req.body;
@@ -219,11 +167,9 @@ router.post('/upsell', requireAuth, async (req, res) => {
       ...dbProducts.map(p => ({ name: p.name, brand: p.brand, price: p.price, category: p.category, id: p._id })),
     ].slice(0, 30);
 
-    // ── Gemini path (requires GEMINI_API_KEY) ───────────────────────────────
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const cartNames = cartItems.map(i => i.name).join(', ') || 'empty';
-        const prompt = `You are a smart shopping assistant for District, a premium streetwear/fashion marketplace.
+    const cartNames = cartItems.map(i => i.name).join(', ') || 'empty';
+
+    const prompt = `You are a smart shopping assistant for District, a premium streetwear/fashion marketplace.
 
 A customer just added this item to their cart:
 - Product: ${item.name} by ${item.brand}, ₹${item.price}
@@ -245,29 +191,27 @@ Respond ONLY with valid JSON (no markdown, no explanation outside the JSON):
   ]
 }`;
 
-        const text    = await callGemini(prompt);
-        const cleaned = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
-        const parsed  = JSON.parse(cleaned);
+    const text = await callGemini(prompt);
 
-        const suggestions = (parsed.suggestions || []).map(s => {
-          const match = catalog.find(p =>
-            p.name.toLowerCase().includes(s.name.toLowerCase().slice(0, 15)) ||
-            s.name.toLowerCase().includes(p.name.toLowerCase().slice(0, 15))
-          );
-          return { ...s, product: match || null };
-        }).filter(s => s.product);
-
-        if (suggestions.length) return res.json({ suggestions });
-        // fall through to rule-based if Gemini returned nothing usable
-      } catch (geminiErr) {
-        console.warn('Gemini upsell failed, using rule-based fallback:', geminiErr.message);
-      }
+    // Strip markdown code fences if present
+    const cleaned = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return res.json({ suggestions: [] });
     }
 
-    // ── Rule-based fallback (no API key needed) ─────────────────────────────
-    const suggestions = ruleBasedUpsell(item, cartItems, catalog);
-    res.json({ suggestions });
+    // Match suggestion names back to catalog objects (fuzzy)
+    const suggestions = (parsed.suggestions || []).map(s => {
+      const match = catalog.find(p =>
+        p.name.toLowerCase().includes(s.name.toLowerCase().slice(0, 15)) ||
+        s.name.toLowerCase().includes(p.name.toLowerCase().slice(0, 15))
+      );
+      return { ...s, product: match || null };
+    }).filter(s => s.product);
 
+    res.json({ suggestions });
   } catch (err) {
     console.error('Upsell error:', err.message);
     res.status(500).json({ error: err.message });
