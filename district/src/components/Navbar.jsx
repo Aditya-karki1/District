@@ -10,7 +10,7 @@ const navLinks = [
 ];
 
 export default function Navbar({ onMenuOpen, onNavClick, onAIOpen, onAuthOpen, onAccountOpen }) {
-  const { cartCount, setCartOpen, showPopup } = useApp();
+  const { cartCount, setCartOpen, showPopup, showToast } = useApp();
   const { user, logout, getToken } = useAuth();
   const [scrolled,    setScrolled]    = useState(false);
   const [gcBalance,   setGcBalance]   = useState(0);
@@ -64,7 +64,7 @@ export default function Navbar({ onMenuOpen, onNavClick, onAIOpen, onAuthOpen, o
         body:    JSON.stringify({ code }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error); return; }
+      if (!res.ok) { showToast(data.error || 'Failed to unlock coupon'); return; }
       setGcBalance(data.gcBalance);
       setUnlockMsg({ code: data.code, label: data.label });
       setTimeout(() => setUnlockMsg(null), 3000);
@@ -76,7 +76,7 @@ export default function Navbar({ onMenuOpen, onNavClick, onAIOpen, onAuthOpen, o
         type:     'coupon',
       });
     } catch {
-      alert('Failed to unlock coupon. Try again.');
+      showToast('Failed to unlock coupon. Try again.');
     } finally {
       setUnlocking(null);
     }
