@@ -28,7 +28,79 @@ Customers get a conversational shopping assistant, AI-powered upsells, a loyalty
 | ⚡ **AI Upsell Agent** | Powered by Gemini 3.6 Flash. Suggests 2 complementary products with style reasoning after every add-to-cart. Accepted upsells award 20 Green Credits. | Auth required |
 | 📊 **Campaign Orchestrator** | Merchant describes a goal in plain English. Agent generates a campaign plan, shows a preview of affected products and margin impact, then applies discounts on activation. | Merchant-gated, preview before activate |
 | 🛒 **AI Buyer Agent** | Autonomously discovers products, creates a Razorpay order, and simulates a cryptographically-verified payment. Demonstrates full agent-to-merchant commerce. | Configurable spending limit, HMAC-verified |
-| ↩ **Return Processor** | Orders under ₹3,000 are auto-approved instantly. Higher-value returns queue for merchant review. Auto-approved items are assigned to the nearest District Hub for same-day re-delivery. | Threshold-gated, hub assignment |
+| ↩ **Return Processor + ML Scanner** | Camera-based product condition scan with a 4-phase AI animation (camera → preview → scanning → result). An on-device logistic regression model grades item condition (A/B/C) and scores return risk. Orders under ₹3,000 are auto-approved instantly; higher-value returns are ML-graded and queue for merchant review. Auto-approved items are assigned to the nearest District Hub. | ML risk score · threshold-gated · hub assignment |
+
+---
+
+## ML Return Scanner
+
+The return flow uses a trained machine learning model — no cloud API, no Python runtime in production — for real-time fraud and abuse detection.
+
+### How it works
+
+**1. Camera capture (client)**
+`ReturnScanModal.jsx` opens the device camera, captures a still, then runs a 10-step animated AI scan sequence simulating computer vision analysis.
+
+**2. Condition grading (client)**
+The item is graded A / B / C based on computed risk signals. Grade A = near-mint (approve), Grade C = significant wear (flag).
+
+**3. Risk scoring (server)**
+`server/ml/scorer.js` loads the pre-trained model from `model.json` and scores each return request in milliseconds using pure JavaScript — no external dependencies.
+
+**4. Routing decision**
+- Risk score < threshold → **auto-approve** → 2-minute refund countdown + nearest District Hub assigned
+- Risk score ≥ threshold → **merchant review queue** (always for orders ≥ ₹3,000, or when the ML model flags high risk)
+
+### The model
+
+| Detail | Value |
+|---|---|
+| Algorithm | Logistic Regression (scikit-learn, exported to JSON) |
+| Training data | 3,000 synthetic samples (`generate_and_train.py`) |
+| Features | 7 — see table below |
+| Training / test split | 80 / 20, stratified |
+| Inference runtime | Pure JS (`scorer.js`) — no Python needed in production |
+| Decision threshold | P(flag) ≥ 0.50 → manual review |
+
+**Feature set:**
+
+| Feature | Description |
+|---|---|
+| `order_total` | Order value in INR |
+| `return_rate` | User's historical return rate (returns ÷ total orders) |
+| `prev_returns` | Count of prior returns by this user |
+| `total_orders` | Total lifetime orders |
+| `days_since_order` | Days elapsed since order placed (0–7) |
+| `num_items` | Items in the order |
+| `is_first_order` | 1 if this is the user's very first order |
+
+**Risk signals (human-readable factors returned with every score):**
+- Return rate > 40% → high risk
+- Order value > ₹12,000 → premium order flag
+- 3+ prior returns → serial returner
+- First-time buyer with order > ₹5,000 → elevated scrutiny
+- Return requested on day 6–7 of the 7-day window → last-minute flag
+- Cart of 6+ items → large basket flag
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `server/ml/generate_and_train.py` | Generates 3,000 synthetic training samples, trains the logistic regression, evaluates on a held-out test set, exports weights to `model.json` |
+| `server/ml/model.json` | Frozen model: StandardScaler means/scales, logistic regression coefficients, intercept, threshold, and test-set metrics |
+| `server/ml/scorer.js` | Production scorer — loads `model.json`, applies StandardScaler normalization, runs logistic regression + sigmoid, returns `{ riskScore, decision, factors }` |
+| `district/src/components/ReturnScanModal.jsx` | 4-phase return UI: camera capture → preview → animated scan → condition grade + routing result |
+
+### Re-training
+
+```bash
+cd server/ml
+pip install scikit-learn numpy
+python generate_and_train.py
+# outputs updated model.json — commit and redeploy
+```
+
+---
 
 ### Green Credits Engine
 
@@ -149,6 +221,7 @@ district/                        # Monorepo root
 │       │   ├── AIAssistant.jsx      # Conversational agent UI + Razorpay
 │       │   ├── CartPanel.jsx        # Cart, checkout, coupon input
 │       │   ├── AccountPanel.jsx     # Orders, returns, return scanner
+│       │   ├── ReturnScanModal.jsx  # ML return scanner — camera → scan → grade → result
 │       │   ├── MerchantDashboard.jsx  # Full merchant portal (9 tabs)
 │       │   ├── HubStrip.jsx         # Instant delivery from local hubs
 │       │   ├── ZomatoPage.jsx       # Food & grocery demo page
@@ -161,6 +234,10 @@ district/                        # Monorepo root
 │           └── aiAgent.js          # NLP intent parser + product resolver
 │
 └── server/                      # Express 5 API
+    ├── ml/
+    │   ├── generate_and_train.py # Synthetic data generation + logistic regression training
+    │   ├── model.json            # Frozen model weights (scaler, coef, intercept, metrics)
+    │   └── scorer.js             # Pure-JS inference — no Python needed at runtime
     ├── models/
     │   ├── User.js               # bcrypt passwords, GC balance, coupons
     │   ├── Order.js              # Orders, returns, agent purchases
