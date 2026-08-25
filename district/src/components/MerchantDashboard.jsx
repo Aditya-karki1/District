@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const TABS = ['Overview', 'Orders', 'Returns', 'Hubs', 'Products', 'Campaigns', 'Coupons', 'AI Buyer', 'Audit'];
 
@@ -1206,73 +1208,52 @@ async function geocodeLocation(query) {
   return { lat: parseFloat(lat), lng: parseFloat(lon), label: display_name };
 }
 
-function loadLeaflet() {
-  return new Promise((resolve) => {
-    if (window.L) { resolve(window.L); return; }
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => resolve(window.L);
-    document.head.appendChild(script);
-  });
-}
-
 function HubsMapView({ nearbyHubs, userLoc }) {
   const containerRef = useRef(null);
   const mapRef       = useRef(null);
 
   useEffect(() => {
-    if (!nearbyHubs.length || !userLoc) return;
-    let cancelled = false;
+    if (!nearbyHubs.length || !userLoc || !containerRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
 
-    loadLeaflet().then((L) => {
-      if (cancelled || !containerRef.current) return;
-      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true });
+    mapRef.current = map;
 
-      const map = L.map(containerRef.current, { zoomControl: true, attributionControl: true });
-      mapRef.current = map;
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd', maxZoom: 19,
+    }).addTo(map);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd', maxZoom: 19,
-      }).addTo(map);
+    const userIcon = L.divIcon({
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:#C8FF00;border:3px solid #000;box-shadow:0 0 10px #C8FF00,0 0 22px rgba(200,255,0,0.5)"></div>`,
+      iconSize: [14, 14], iconAnchor: [7, 7], className: '',
+    });
+    L.marker([userLoc.lat, userLoc.lng], { icon: userIcon })
+      .addTo(map)
+      .bindPopup(`<b style="color:#C8FF00">Customer Location</b><br><small>${userLoc.label}</small>`);
 
-      // User location dot
-      const userIcon = L.divIcon({
-        html: `<div style="width:14px;height:14px;border-radius:50%;background:#C8FF00;border:3px solid #000;box-shadow:0 0 10px #C8FF00,0 0 22px rgba(200,255,0,0.5)"></div>`,
-        iconSize: [14, 14], iconAnchor: [7, 7], className: '',
+    const points = [[userLoc.lat, userLoc.lng]];
+    nearbyHubs.forEach(hub => {
+      points.push([hub.lat, hub.lng]);
+      const dist = hubDistKm(hub, userLoc);
+      const icon = L.divIcon({
+        html: `<div style="background:#C8FF00;color:#000;font-size:10px;font-weight:800;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.6);border:2px solid #fff">📦 ${hub.area} · ${fmtDist(dist)}</div>`,
+        iconAnchor: [0, 0], className: '',
       });
-      L.marker([userLoc.lat, userLoc.lng], { icon: userIcon })
+      L.marker([hub.lat, hub.lng], { icon })
         .addTo(map)
-        .bindPopup(`<b style="color:#C8FF00">Customer Location</b><br><small>${userLoc.label}</small>`);
+        .bindPopup(`<b>${hub.name}</b><br><small>${hub.address}</small><br><small style="color:#22c55e">⚡ ${fmtDist(dist)} — instant delivery eligible</small>`);
 
-      // Nearby hub markers
-      const points = [[userLoc.lat, userLoc.lng]];
-      nearbyHubs.forEach(hub => {
-        points.push([hub.lat, hub.lng]);
-        const dist = hubDistKm(hub, userLoc);
-        const icon = L.divIcon({
-          html: `<div style="background:#C8FF00;color:#000;font-size:10px;font-weight:800;padding:5px 10px;border-radius:8px;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,0.6);border:2px solid #fff">📦 ${hub.area} · ${fmtDist(dist)}</div>`,
-          iconAnchor: [0, 0], className: '',
-        });
-        L.marker([hub.lat, hub.lng], { icon })
-          .addTo(map)
-          .bindPopup(`<b>${hub.name}</b><br><small>${hub.address}</small><br><small style="color:#22c55e">⚡ ${fmtDist(dist)} — instant delivery eligible</small>`);
-
-        L.polyline([[userLoc.lat, userLoc.lng], [hub.lat, hub.lng]], {
-          color: '#C8FF00', weight: 1.5, dashArray: '5 6', opacity: 0.5,
-        }).addTo(map);
-      });
-
-      map.fitBounds(points, { padding: [50, 50], maxZoom: 13 });
+      L.polyline([[userLoc.lat, userLoc.lng], [hub.lat, hub.lng]], {
+        color: '#C8FF00', weight: 1.5, dashArray: '5 6', opacity: 0.5,
+      }).addTo(map);
     });
 
+    map.fitBounds(points, { padding: [50, 50], maxZoom: 13 });
+
     return () => {
-      cancelled = true;
-      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+      mapRef.current?.remove();
+      mapRef.current = null;
     };
   }, [nearbyHubs, userLoc]);
 

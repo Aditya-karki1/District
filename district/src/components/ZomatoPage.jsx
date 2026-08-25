@@ -282,10 +282,9 @@ export default function ZomatoPage({ onClose, onAIQuery }) {
               <iframe
                 title="Nearby Restaurants Map"
                 className="instant-map"
-                src="https://www.google.com/maps/embed?pb=!1m16!1m12!1m3!1d14008.14!2d77.20660!3d28.63576!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!2m1!1srestaurants+near+connaught+place+new+delhi!5e0!3m2!1sen!2sin!4v1700000000000!5m2!1sen!2sin"
+                src="https://www.openstreetmap.org/export/embed.html?bbox=77.1966%2C28.6208%2C77.2366%2C28.6508&layer=mapnik&marker=28.6358%2C77.2166"
                 allowFullScreen=""
                 loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
               />
               <div className="instant-map-legend">
                 <span className="map-legend-dot red" /> Restaurants
