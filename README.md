@@ -108,7 +108,18 @@ addToCart(product)
 
 ### Gemini prompt design
 
-The prompt passes the trigger product, full cart contents, and a 30-item catalog sample. Gemini is instructed to suggest **exactly 2 items** from the provided catalog list and explain why each one complements the trigger item in terms of **fashion/style synergy** (not just category matching). The response is parsed as strict JSON; if parsing fails, suggestions are silently dropped (best-effort, never blocks the cart flow).
+The prompt passes the trigger product, full cart contents, and a 30-item catalog sample. Gemini is instructed to suggest **exactly 2 items** from the provided catalog list and explain why each one complements the trigger item in terms of **fashion/style synergy** (not just category matching). The response is parsed as strict JSON; if parsing fails, the agent falls back to rule-based suggestions automatically.
+
+### Running without a Gemini key
+
+The upsell agent works **without `GEMINI_API_KEY`**. When the key is absent (or the Gemini call fails), a built-in rule-based fallback kicks in:
+
+1. Identifies the trigger item's keyword (sneaker, hoodie, jacket, tee, jean, cap, backpack)
+2. Looks up a hardcoded complementary-category list for that keyword
+3. Picks the 2 best-matching products from the catalog that aren't already in the cart
+4. Attaches a pre-written style reason
+
+The cart flow, GC award, and UpsellAcceptance tracking all work identically in both paths. The only difference is the suggestion quality — Gemini gives context-aware reasons; the fallback gives category-matched ones.
 
 ### Data tracked
 
@@ -464,7 +475,7 @@ node seedHubs.js  # seeds 5 District Hubs across Bangalore, Mumbai, Delhi, Chenn
 | `RAZORPAY_KEY_ID` | **required** | Test-mode key ID starting with `rzp_test_`. |
 | `RAZORPAY_KEY_SECRET` | **required** | Test-mode secret. Used for HMAC-SHA256 verification. |
 | `RAZORPAY_WEBHOOK_SECRET` | optional | Required only if you configure Razorpay webhooks. |
-| `GEMINI_API_KEY` | **required** | Google AI Studio key. Powers the upsell agent. |
+| `GEMINI_API_KEY` | optional | Google AI Studio key. Powers Gemini upsell suggestions. If unset, upsells fall back to built-in rule-based suggestions — all other agents are unaffected. |
 
 ---
 
