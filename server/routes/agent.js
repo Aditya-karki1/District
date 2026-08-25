@@ -16,6 +16,16 @@ const rzp = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+async function callGemini(prompt) {
+  const response = await genai.models.generateContent({
+    model:    'gemini-3.6-flash',
+    contents: prompt,
+  });
+  return response.text;
+}
+
 const UPSELL_BONUS = 20; // GC awarded for accepting an AI upsell
 
 const router = express.Router();

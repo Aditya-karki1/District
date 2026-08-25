@@ -1,6 +1,20 @@
 import ProductCard from './ProductCard';
 
-export default function ProductGrid({ title, accent, products, id }) {
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div className="skeleton skeleton-img" />
+      <div className="skeleton-info">
+        <div className="skeleton skeleton-line skeleton-brand-line" />
+        <div className="skeleton skeleton-line skeleton-name-line" />
+        <div className="skeleton skeleton-line skeleton-name-line2" />
+        <div className="skeleton skeleton-line skeleton-price-line" />
+      </div>
+    </div>
+  );
+}
+
+export default function ProductGrid({ title, accent, products, id, loading }) {
   return (
     <div className="section" id={id}>
       <div className="section-header">
@@ -10,9 +24,10 @@ export default function ProductGrid({ title, accent, products, id }) {
         <a href="#" className="section-link">View All</a>
       </div>
       <div className="product-grid">
-        {products.map(product => (
-          <ProductCard key={product.id} product={product} />
-        ))}
+        {loading
+          ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+          : products.map(product => <ProductCard key={product.id} product={product} />)
+        }
       </div>
     </div>
   );

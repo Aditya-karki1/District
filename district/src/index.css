@@ -399,6 +399,45 @@ input { font-family: inherit; }
 }
 .cat-card:hover::after { transform: scaleX(1); }
 
+/* ─── SKELETON LOADER ──────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  background: var(--surface-2);
+  background-image: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface)   40%,
+    var(--surface-2) 80%
+  );
+  background-size: 1200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-card {
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.skeleton-img  { aspect-ratio: 3/4; width: 100%; }
+.skeleton-info { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.skeleton-line { height: 11px; border-radius: 4px; }
+.skeleton-brand-line { width: 38%; }
+.skeleton-name-line  { width: 82%; height: 14px; }
+.skeleton-name-line2 { width: 56%; height: 14px; }
+.skeleton-price-line { width: 46%; height: 15px; margin-top: 6px; }
+
+/* image shimmer within real card */
+.product-img-skeleton {
+  position: absolute; inset: 0;
+  z-index: 1;
+  transition: opacity 0.3s;
+}
+.product-img-skeleton.hidden { opacity: 0; pointer-events: none; }
+.product-real-img { position: relative; z-index: 2; }
+
 /* ─── PRODUCT CARD ─────────────────────────────────────────── */
 .product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 .product-card {

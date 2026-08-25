@@ -3,8 +3,9 @@ import { useApp } from '../context/AppContext';
 
 export default function ProductCard({ product }) {
   const { addToCart } = useApp();
-  const [wished, setWished] = useState(false);
-  const [added,  setAdded]  = useState(false);
+  const [wished,    setWished]    = useState(false);
+  const [added,     setAdded]     = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const discount = product.orig
     ? Math.round((1 - product.price / product.orig) * 100)
@@ -19,11 +20,14 @@ export default function ProductCard({ product }) {
   return (
     <article className="product-card">
       <div className="product-img">
+        <div className={`skeleton product-img-skeleton${imgLoaded ? ' hidden' : ''}`} />
+
         <img
           src={product.img}
           alt={product.name}
           className="product-real-img"
           loading="lazy"
+          onLoad={() => setImgLoaded(true)}
         />
 
         <div className="product-badges">

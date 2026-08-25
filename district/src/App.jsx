@@ -44,20 +44,23 @@ export default function App() {
   const [authOpen,    setAuthOpen]    = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [aiQuery,     setAiQuery]     = useState({ text: '', key: 0 });
-  const [liveArrivals,  setLiveArrivals]  = useState(newArrivals);
-  const [liveSellers,   setLiveSellers]   = useState(bestSellers);
+  const [liveArrivals,    setLiveArrivals]    = useState(newArrivals);
+  const [liveSellers,     setLiveSellers]     = useState(bestSellers);
+  const [catalogLoading,  setCatalogLoading]  = useState(true);
 
   useEffect(() => {
     fetch('/api/agent/catalog')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (!data?.catalog?.length) return;
-        const mapped = data.catalog.map(mapDbProduct);
-        const mid = Math.ceil(mapped.length / 2);
-        setLiveArrivals(mapped.slice(0, mid));
-        setLiveSellers(mapped.slice(mid));
+        if (data?.catalog?.length) {
+          const mapped = data.catalog.map(mapDbProduct);
+          const mid = Math.ceil(mapped.length / 2);
+          setLiveArrivals(mapped.slice(0, mid));
+          setLiveSellers(mapped.slice(mid));
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setCatalogLoading(false));
   }, []);
 
   const handleAIQuery = (text) => {
@@ -122,11 +125,11 @@ export default function App() {
           <main>
             <HeroCarousel />
             <CategoryGrid />
-            <ProductGrid id="arrivals" title="New"  accent="Arrivals" products={liveArrivals} />
+            <ProductGrid id="arrivals" title="New"  accent="Arrivals" products={liveArrivals} loading={catalogLoading} />
             <HubStrip />
             <BrandMarquee />
             <PromoStrip />
-            <ProductGrid title="Best" accent="Sellers" products={liveSellers} />
+            <ProductGrid title="Best" accent="Sellers" products={liveSellers} loading={catalogLoading} />
             <Newsletter />
           </main>
         )}
