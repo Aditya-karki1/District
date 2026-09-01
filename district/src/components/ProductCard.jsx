@@ -63,6 +63,12 @@ export default function ProductCard({ product }) {
             </>
           )}
         </div>
+        <button
+          className={`product-add-btn${added ? ' added' : ''}`}
+          onClick={handleAdd}
+        >
+          {added ? '✓ Added' : '+ Add to Cart'}
+        </button>
       </div>
     </article>
   );

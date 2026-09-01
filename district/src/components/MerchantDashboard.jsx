@@ -581,7 +581,7 @@ function CampaignsTab({ campaigns, headers, onRefresh }) {
   async function handleDeactivate(id) {
     setError('');
     try {
-      const res  = await fetch(`/api/agent/campaigns/${id}/deactivate`, { method: 'PATCH', headers: headers() });
+      const res  = await fetch(`/api/agent/campaigns/${id}/deactivate`, { method: 'PATCH', headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       onRefresh();

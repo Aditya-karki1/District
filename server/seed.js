@@ -6,7 +6,7 @@ const U = (id, w = 600) => `https://images.unsplash.com/photo-${id}?w=${w}&q=85&
 
 const PRODUCTS = [
   { brand: 'Nike',              name: 'Dunk Low Retro White Black',       price: 8995,  originalPrice: null,  category: 'Sneakers',     badge: 'NEW',     stock: 50, img: U('1542291026-7eec264c27ff') },
-  { brand: 'Adidas Originals',  name: 'Trefoil Essentials Hoodie',        price: 4999,  originalPrice: null,  category: 'Streetwear',   badge: 'NEW',     stock: 80, img: U('1558618666-fcd25c85cd64') },
+  { brand: 'Adidas Originals',  name: 'Trefoil Essentials Hoodie',        price: 4999,  originalPrice: null,  category: 'Streetwear',   badge: 'NEW',     stock: 80, img: U('1556821840-3a63f8550703') },
   { brand: 'New Balance',       name: '990v6 Made in USA',                price: 14995, originalPrice: null,  category: 'Sneakers',     badge: 'NEW',     stock: 30, img: U('1539185441755-769473a23570') },
   { brand: 'The North Face',    name: '1996 Retro Nuptse Jacket',         price: 15999, originalPrice: 19999, category: 'Fashion',      badge: 'SALE',    stock: 20, img: U('1564557287817-3785e38ec1f5') },
   { brand: 'Carhartt WIP',      name: 'Chase Short Sleeve T-Shirt',       price: 2799,  originalPrice: null,  category: 'Fashion',      badge: 'NEW',     stock: 100,img: U('1521572163474-6864f9cf17ab') },
