@@ -5,7 +5,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "npm install --prefix district && npm run build --prefix district && npm install --prefix server",
+    "build": "npm install --include=dev --prefix district && npm run build --prefix district && npm install --prefix server",
     "start": "node server/index.js"
   }
 }
