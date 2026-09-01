@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install --prefix district && npm run build --prefix district && npm install --prefix server"
+buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node server/index.js"
+startCommand = "npm start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
