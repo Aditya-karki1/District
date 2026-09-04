@@ -1,6 +1,6 @@
 # DIS·TRICT
 
-> **Razorpay Buildathon 2025 — Track 01: AI Growth & Agentic Commerce**
+> **Razorpay Buildathon 2026 — Track 01: AI Growth & Agentic Commerce**
 
 An AI-powered streetwear commerce platform where every agent action is **bounded, gated, and auditable** — built to grow merchant revenue and make merchants transactable by AI buyers, end to end, on Razorpay test-mode APIs.
 
@@ -725,4 +725,4 @@ HubStrip (homepage) → Customer adds hub item to cart
 
 ---
 
-Built for **Razorpay Buildathon 2025** · Track 01: AI Growth & Agentic Commerce
+Built for **Razorpay Buildathon 2026** · Track 01: AI Growth & Agentic Commerce
