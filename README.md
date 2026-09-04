@@ -4,6 +4,15 @@
 
 An AI-powered streetwear commerce platform where every agent action is **bounded, gated, and auditable** — built to grow merchant revenue and make merchants transactable by AI buyers, end to end, on Razorpay test-mode APIs.
 
+### 🔗 Links
+
+| | |
+|---|---|
+| 🌐 **Live Site** | [district-app-production-a225.up.railway.app](https://district-app-production-a225.up.railway.app/) |
+| 🎬 **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/1eKxSKl1c_NEjIkQgoUUI7PuOQZaerB9b/view?usp=sharing) |
+
+---
+
 ![React](https://img.shields.io/badge/React_19-20232A?style=flat&logo=react&logoColor=61DAFB)
 ![Express](https://img.shields.io/badge/Express_5-000000?style=flat&logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)

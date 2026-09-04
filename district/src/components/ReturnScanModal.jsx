@@ -162,10 +162,11 @@ export default function ReturnScanModal({ item, itemIndex, onClose, onConfirm, o
   const intervalRef = useRef(null);
   const seqRef      = useRef(null);
 
-  // < ₹3000: AI always approves instantly. >= ₹3000: alternating sim (goes to merchant review)
+  // < ₹3000 unit price: AI always approves instantly. >= ₹3000: alternating sim (goes to merchant review)
   if (seqRef.current === null) seqRef.current = ++_scanSeq;
-  const isLowValue = orderTotal < 3000;
-  const approved   = isLowValue ? true : seqRef.current % 2 === 1;
+  const isLowValue   = orderTotal < 3000;                         // orderTotal = unit price
+  const refundAmount = orderTotal * (item?.qty || 1);             // full refund for qty
+  const approved     = isLowValue ? true : seqRef.current % 2 === 1;
 
   // AI grade for high-value items (deterministic per scan session)
   const gradeData = (() => {
@@ -451,7 +452,7 @@ export default function ReturnScanModal({ item, itemIndex, onClose, onConfirm, o
               {/* AI instant refund block for < ₹3000 */}
               {approved && isLowValue && (
                 <>
-                  <RefundCountdown amount={orderTotal} />
+                  <RefundCountdown amount={refundAmount} />
                   <div className="rscan-hub-notice">
                     <span className="rscan-hub-icon">📦</span>
                     <div>
@@ -478,7 +479,7 @@ export default function ReturnScanModal({ item, itemIndex, onClose, onConfirm, o
                   <div className="rscan-verdict-reason">
                     Product condition meets return standards. This return will be reviewed by our merchant team.
                   </div>
-                  <div className="rscan-manual-tag">₹{orderTotal.toLocaleString('en-IN')} · Sent to merchant for manual review</div>
+                  <div className="rscan-manual-tag">₹{refundAmount.toLocaleString('en-IN')} · Sent to merchant for manual review</div>
                 </>
               )}
               {!approved && (

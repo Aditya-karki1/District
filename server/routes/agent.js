@@ -436,17 +436,31 @@ router.post('/buy', requireMerchant, async (req, res) => {
     steps.push({ step: 'AGENT_STARTED', detail: `Agent "${agentId}" initiated purchase`, ts: new Date() });
 
     // 1 — Discover products matching preferences
-    const filter = { active: true, stock: { $gt: 0 } };
-    if (preferences.category) filter.category = { $regex: preferences.category, $options: 'i' };
-    if (preferences.badge)    filter.badge     = preferences.badge;
+    const baseFilter = { active: true, stock: { $gt: 0 } };
+    if (preferences.category) baseFilter.category = { $regex: preferences.category, $options: 'i' };
 
-    let products = await Product.find(filter).sort({ price: -1 });
+    let badgeDropped = false;
+    let products;
 
-    // Enforce spending limit on individual products too
-    products = products.filter(p => p.price <= spendingLimit);
+    if (preferences.badge) {
+      // Try with badge filter first
+      const withBadge = await Product.find({ ...baseFilter, badge: preferences.badge }).sort({ price: -1 });
+      products = withBadge.filter(p => p.price <= spendingLimit);
+
+      if (!products.length) {
+        // Badge filter + spending limit yielded nothing — relax badge and retry
+        badgeDropped = true;
+        steps.push({ step: 'BADGE_RELAXED', detail: `No "${preferences.badge}" products within ₹${spendingLimit} — retrying without badge filter`, ts: new Date() });
+        const withoutBadge = await Product.find(baseFilter).sort({ price: -1 });
+        products = withoutBadge.filter(p => p.price <= spendingLimit);
+      }
+    } else {
+      const all = await Product.find(baseFilter).sort({ price: -1 });
+      products = all.filter(p => p.price <= spendingLimit);
+    }
 
     if (!products.length) {
-      return res.status(404).json({ error: 'No matching products within spending limit', agentId, spendingLimit });
+      return res.status(404).json({ error: `No products in "${preferences.category || 'any category'}" within ₹${spendingLimit} spending limit. Try increasing the limit or changing the category.`, agentId, spendingLimit });
     }
 
     // 2 — Pick the best product (highest price within budget = max merchant revenue)
@@ -454,7 +468,7 @@ router.post('/buy', requireMerchant, async (req, res) => {
     const cartItems = [{ productId: String(chosen._id), name: chosen.name, brand: chosen.brand, price: chosen.price, qty: 1, img: chosen.img || '' }];
     const totalAmount = chosen.price;
 
-    steps.push({ step: 'PRODUCTS_SELECTED', detail: `Selected "${chosen.name}" by ${chosen.brand} (₹${chosen.price})`, ts: new Date() });
+    steps.push({ step: 'PRODUCTS_SELECTED', detail: `Selected "${chosen.name}" by ${chosen.brand} (₹${chosen.price})${badgeDropped ? ` — badge filter relaxed, best match in budget` : ''}`, ts: new Date() });
 
     // 3 — Enforce spending limit (bounded action)
     if (totalAmount > spendingLimit) {

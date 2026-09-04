@@ -85,6 +85,13 @@ export default function AIAssistant({ isOpen, onOpen, onClose, onAccountOpen, in
   // Seed live merchant catalog into the AI on first open
   useEffect(() => { initLiveCatalog(); }, []);
 
+  // Reset chat whenever the logged-in user changes (login / logout / switch)
+  useEffect(() => {
+    setMessages(WELCOME);
+    lastProductsRef.current = [];
+    setInput('');
+  }, [user?._id ?? user?.email]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typing]);
@@ -121,6 +128,10 @@ export default function AIAssistant({ isOpen, onOpen, onClose, onAccountOpen, in
   const fetchUpsell = useCallback(async (item) => {
     const token = getToken();
     if (!token) return;
+
+    // Skip upsell for recipe/food ingredients
+    if (String(item?.id || '').startsWith('r-')) return;
+
     try {
       const allProducts = getCatalogSnapshot();
       const res  = await fetch('/api/agent/upsell', {
@@ -135,12 +146,12 @@ export default function AIAssistant({ isOpen, onOpen, onClose, onAccountOpen, in
       const upsellProducts = data.suggestions.map(s => s.product);
       lastProductsRef.current = upsellProducts;
       setMessages(prev => [...prev, {
-        id:          Date.now() + 10,
-        type:        'bot',
-        text:        `You might also like:\n${lines}`,
-        upsells:     upsellProducts,
-        trigger:     item,
-        time:        'Now',
+        id:      Date.now() + 10,
+        type:    'bot',
+        text:    `You might also like:\n${lines}`,
+        upsells: upsellProducts,
+        trigger: item,
+        time:    'Now',
       }]);
     } catch {
       // upsell is best-effort

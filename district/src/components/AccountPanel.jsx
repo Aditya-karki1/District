@@ -248,7 +248,7 @@ export default function AccountPanel({ isOpen, onClose, onAuthOpen }) {
                                 {showBtn ? (
                                   <button
                                     className="acct-scan-btn"
-                                    onClick={() => handleScanClick(it, i, order._id, order.total)}
+                                    onClick={() => handleScanClick(it, i, order._id, it.price)}
                                   >
                                     <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                       <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>

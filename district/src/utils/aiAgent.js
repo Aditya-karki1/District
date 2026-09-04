@@ -86,11 +86,12 @@ const FOOD_INTENT_RX = [
 const PATTERNS = [
   { intent: 'RECIPE',    rx: FOOD_INTENT_RX },
   { intent: 'ADD',       rx: [/add (.+?) (?:to|in(?:to)?|on(?:to)?) (?:my )?cart/i, /(?:i want|buy me|get me|order) (.+)/i, /put (.+?) (?:in(?:to)?|on(?:to)?) (?:my )?cart/i, /cart me (.+)/i] },
-  { intent: 'ADD_ALL',   rx: [/(?:add|put) (?:them|those|both|all)(?: (?:to|in(?:to)?|on(?:to)?))? (?:my )?cart/i, /(?:add|put) (?:them|those|it|both|all) (?:to|in(?:to)?|on(?:to)?) (?:my )?cart/i, /(?:yes[,.]?|yep[,.]?|sure[,.]?)?\s*(?:add|put) (?:them|those|both|all)/i] },
+  { intent: 'ADD_ALL',     rx: [/(?:add|put) (?:them|those|both|all)(?: (?:to|in(?:to)?|on(?:to)?))? (?:my )?cart/i, /(?:add|put) (?:them|those|it|both|all) (?:to|in(?:to)?|on(?:to)?) (?:my )?cart/i, /(?:yes[,.]?|yep[,.]?|sure[,.]?)?\s*(?:add|put) (?:them|those|both|all)/i] },
+  { intent: 'ADD_ORDINAL', rx: [/add (?:the )?(first|second|third|1st|2nd|3rd|that|this|it|one)\b/i, /^(?:the )?(first|second|third|1st|2nd|3rd)\s*(?:one)?$/i, /(?:add|get|buy) (?:that|this) one/i] },
   { intent: 'REMOVE',    rx: [/remove (.+?) from (?:my )?cart/i, /delete (.+?) from (?:my )?cart/i, /take out (.+)/i, /don't want (.+)/i] },
   { intent: 'CLEAR',     rx: [/clear (?:my )?cart/i, /empty (?:my )?cart/i, /remove everything/i, /wipe (?:my )?cart/i] },
   { intent: 'SHOW_CART', rx: [/(?:show|open|view) (?:my )?cart/i, /what(?:'s| is) in (?:my )?cart/i, /^(?:my cart|show cart|open cart)$/i] },
-  { intent: 'ORDER',     rx: [/place (?:my )?order/i, /checkout/i, /buy now/i, /confirm (?:my )?order/i, /proceed to (?:buy|checkout)/i, /order now/i] },
+  { intent: 'ORDER',     rx: [/place (?:my )?order/i, /checkout/i, /buy now/i, /confirm (?:my )?order/i, /proceed to (?:buy|checkout)/i, /order now/i, /make (?:the )?payment/i, /pay now/i, /complete (?:the )?payment/i, /do (?:the )?payment/i, /complete (?:the )?order/i] },
   { intent: 'ORDERS',    rx: [/(?:my )?(?:past )?orders?/i, /order history/i, /purchase history/i, /what did i (?:buy|order)/i] },
   { intent: 'SEARCH',    rx: [/show me (.+)/i, /find (.+)/i, /search (?:for )?(.+)/i, /browse (.+)/i, /any (.+?) (?:available|in stock)/i, /what (.+?) do you have/i, /got any (.+)/i, /looking for (.+)/i] },
   { intent: 'GREET',     rx: [/^(?:hi+|hello|hey|hola|sup|yo)\b/i, /^good (?:morning|afternoon|evening)/i] },
@@ -203,6 +204,22 @@ export function resolveAction(intent, query, cartItems = [], extra = {}) {
         };
       }
       return { type: null, reply: "I'm not sure which items you mean — tap **+ Add** on the cards above, or say *add [product name] to cart*." };
+    }
+
+    case 'ADD_ORDINAL': {
+      const { lastProducts } = extra;
+      if (!lastProducts?.length) {
+        return { type: null, reply: "I'm not sure which item you mean — tap **+ Add** on the cards above, or say *add [product name] to cart*." };
+      }
+      const raw = query.toLowerCase();
+      const idx = /second|2nd/.test(raw) ? 1 : /third|3rd/.test(raw) ? 2 : 0;
+      const product = lastProducts[idx] || lastProducts[0];
+      return {
+        type:    'ADD_TO_CART',
+        product,
+        reply:   `Done! **${product.name}** by ${product.brand} added to your cart 🛒\n₹${product.price.toLocaleString('en-IN')}`,
+        product_card: product,
+      };
     }
 
     case 'ADD': {
