@@ -27,6 +27,10 @@ District is a full-stack e-commerce platform for streetwear and fashion that dem
 
 Customers get a conversational shopping assistant, AI-powered upsells, a loyalty rewards system (Green Credits), and same-day delivery from local return hubs. Merchants get a real-time dashboard with AI campaign orchestration, autonomous purchasing agents, and a full audit trail of every agent decision.
 
+## Architecture
+
+![District System Architecture](docs/architecture.svg)
+
 ---
 
 ## Five AI Agents
